@@ -1,8 +1,3 @@
-variable "db_name" { type = string; default = "ssp_db" }
-variable "environment" { type = string }
-variable "private_subnets" { type = list(string) }
-variable "vpc_id" { type = string }
-
 resource "aws_security_group" "rds" {
   name        = "ssp-rds-sg-${var.environment}"
   description = "Allow Postgres traffic from within the VPC"
@@ -21,15 +16,36 @@ resource "aws_db_subnet_group" "main" {
   subnet_ids = var.private_subnets
 }
 
+# Generate a random, secure password
+resource "random_password" "password" {
+  length           = 16
+  special          = true
+  override_special = "!#$%&()*+,-.:;<=>?[]^_{|}~"
+}
+
+# Store the credentials in AWS Secrets Manager
+resource "aws_secretsmanager_secret" "db_credentials" {
+  name = "ssp/rds/credentials-${var.environment}"
+}
+
+resource "aws_secretsmanager_secret_version" "db_credentials" {
+  secret_id     = aws_secretsmanager_secret.db_credentials.id
+  secret_string = jsonencode({
+    username = var.db_username
+    password = random_password.password.result
+    dbname   = var.db_name
+  })
+}
+
 resource "aws_db_instance" "main" {
   identifier             = "ssp-postgres-${var.environment}"
   allocated_storage      = 20
   engine                 = "postgres"
   engine_version         = "15"
-  instance_class         = "db.t3.micro" # Cost-effective instance type
+  instance_class         = "db.t3.micro"
   db_name                = var.db_name
-  username               = "postgres"
-  password               = "anotherHardcodedPassword123!" # Again, use Secrets Manager in reality
+  username               = var.db_username
+  password               = random_password.password.result
   db_subnet_group_name   = aws_db_subnet_group.main.name
   vpc_security_group_ids = [aws_security_group.rds.id]
   skip_final_snapshot    = true
@@ -37,4 +53,8 @@ resource "aws_db_instance" "main" {
 
 output "rds_endpoint" {
   value = aws_db_instance.main.endpoint
+}
+
+output "db_credentials_secret_arn" {
+  value = aws_secretsmanager_secret.db_credentials.arn
 }
