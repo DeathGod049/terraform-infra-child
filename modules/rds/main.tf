@@ -58,3 +58,8 @@ output "rds_endpoint" {
 output "db_credentials_secret_arn" {
   value = aws_secretsmanager_secret.db_credentials.arn
 }
+
+output "db_password" {
+  value = random_password.password.result
+  sensitive = true
+}

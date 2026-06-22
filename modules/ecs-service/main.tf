@@ -1,3 +1,10 @@
+# The CloudWatch Log Group and Subscription are now handled by the central module
+module "cloudwatch_logs" {
+  source       = "../cloudwatch-logs"
+  service_name = var.service_name
+  environment  = var.environment
+}
+
 # Create the discovery service FIRST so the ARN can be referenced by ECS
 resource "aws_service_discovery_service" "this" {
   name = var.service_name # e.g., auth, product, order
@@ -62,7 +69,7 @@ resource "aws_ecs_task_definition" "this" {
     logConfiguration = {
       logDriver = "awslogs"
       options = {
-        awslogs-group         = "/ecs/${var.service_name}-${var.environment}"
+        awslogs-group         = module.cloudwatch_logs.log_group_name
         awslogs-region        = var.aws_region
         awslogs-stream-prefix = "ecs"
       }
