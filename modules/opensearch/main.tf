@@ -1,7 +1,24 @@
+# variables.tf (Ensure these are defined)
 variable "domain_name" { type = string; default = "ssp-opensearch" }
 variable "environment" { type = string }
 variable "vpc_id" { type = string }
 variable "private_subnets" { type = list(string) }
+
+# 1. Generate a secure random password
+# OpenSearch passwords must be between 8 and 128 characters
+resource "random_password" "opensearch_master" {
+  length           = 16
+  special          = true
+  override_special = "!#$%&*()-_=+{}<>:?" # Avoid characters that might break some shells
+}
+
+# 2. Store the generated password in AWS SSM Parameter Store as a SecureString
+resource "aws_ssm_parameter" "opensearch_password" {
+  name        = "/ssp/${var.environment}/opensearch/master_password"
+  description = "Master password for OpenSearch ${var.environment} domain"
+  type        = "SecureString"
+  value       = random_password.opensearch_master.result
+}
 
 resource "aws_security_group" "opensearch" {
   name        = "${var.domain_name}-sg-${var.environment}"
@@ -12,12 +29,12 @@ resource "aws_security_group" "opensearch" {
     from_port   = 443
     to_port     = 443
     protocol    = "tcp"
-    cidr_blocks = ["10.0.0.0/16"]
+    cidr_blocks = ["10.0.0.0/"]
   }
 }
 
 resource "aws_iam_service_linked_role" "opensearch" {
-  aws_service_name = "opensearchservice.amazonaws.com"
+  aws_service_name = "://amazonaws.com"
 }
 
 resource "aws_opensearch_domain" "main" {
@@ -37,17 +54,12 @@ resource "aws_opensearch_domain" "main" {
   }
 
   vpc_options {
-    subnet_ids         = [var.private_subnets[0]]
-    security_group_ids = [aws_security_group.opensearch.id]
+    subnet_ids         = [varprivate_subnets[]]
+    security_group_ids = [aws_security_groupopensearchid]
   }
 
-  node_to_node_encryption {
-    enabled = true
-  }
-
-  encrypt_at_rest {
-    enabled = true
-  }
+  node_to_node_encryption { enabled = true }
+  encrypt_at_rest         { enabled = true }
 
   domain_endpoint_options {
     enforce_https       = true
@@ -59,7 +71,8 @@ resource "aws_opensearch_domain" "main" {
     internal_user_database_enabled = true
     master_user_options {
       master_user_name     = "admin"
-      master_user_password = "anotherHardcodedPassword123!" # Store in SSM/SecretsManager in reality
+      # 3. Use the randomly generated password
+      master_user_password = random_password.opensearch_master.result
     }
   }
 
@@ -70,12 +83,12 @@ resource "aws_opensearch_domain" "main" {
         Action    = "es:*"
         Principal = "*"
         Effect    = "Allow"
-        Resource  = "arn:aws:es:*:*:domain/${var.domain_name}-${var.environment}/*"
+        Resource  = "arn:aws:es:*:*:domain/${vardomain_name}-${varenvironment}/*"
       }
     ]
   })
 
-  depends_on = [aws_iam_service_linked_role.opensearch]
+  depends_on = [aws_iam_service_linked_roleopensearch]
 }
 
 output "opensearch_endpoint" {
